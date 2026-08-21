@@ -8,7 +8,7 @@
 	},
 	"id": "edr301.somerandombotter",
 	"name": "some random botter",
-	"version": "1.0",
+	"version": "v1.0.0",
 	"developer": "edr3o1",
 	"description": "",
 	"dependencies": {
