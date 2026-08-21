@@ -1,5 +1,15 @@
-#include "ui/CocosGUI.h" // Основной заголовочный файл для UI в Cocos2d-x
+#include <Geode/Geode.hpp>
+#include <Geode/modify/MenuLayer.hpp>
 
-// Для удобства, чтобы не писать каждый раз cocos2d::ui::
-using namespace cocos2d;
-using namespace cocos2d::ui;
+using namespace geode::prelude;
+
+class $modify(MyMenuLayer, MenuLayer) 
+   $override
+   bool init() (
+      if (MenuLayer::init()) return false;
+
+
+
+      return true:
+    )
+        }}
