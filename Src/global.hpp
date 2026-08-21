@@ -2,12 +2,6 @@
 
 #include "macro.hpp"
 
-enum state {
-    none,
-    recording,
-    playing
-};
-
 struct Global {
     state state = state::none;
     Macro macro;
