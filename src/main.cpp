@@ -1,100 +1,133 @@
-/**
- * Include the Geode headers.
- */
-#include <Geode/Geode.hpp>
+#include <Geode/modify/PlayLayer.hpp>
+#include <Geode/modify/PlayerObject.hpp>
+#include <Geode/modify/PauseLayer.hpp>
+#include <vector>
 
-/**
- * Brings cocos2d and all Geode namespaces to the current scope.
- */
 using namespace geode::prelude;
 
-/**
- * `$modify` lets you extend and modify GD's classes.
- * To hook a function in Geode, simply $modify the class
- * and write a new function definition with the signature of
- * the function you want to hook.
- *
- * Here we use the overloaded `$modify` macro to set our own class name,
- * so that we can use it for button callbacks.
- *
- * Notice the header being included, you *must* include the header for
- * the class you are modifying, or you will get a compile error.
- *
- * Another way you could do this is like this:
- *
- * struct MyMenuLayer : Modify<MyMenuLayer, MenuLayer> {};
- */
-#include <Geode/modify/MenuLayer.hpp>
-class $modify(MyMenuLayer, MenuLayer) {
-	/**
-	 * Typically classes in GD are initialized using the `init` function, (though not always!),
-	 * so here we use it to add our own button to the bottom menu.
-	 *
-	 * Note that for all hooks, your signature has to *match exactly*,
-	 * `void init()` would not place a hook!
-	*/
-	bool init() {
-		/**
-		 * We call the original init function so that the
-		 * original class is properly initialized.
-		 */
-		if (!MenuLayer::init()) {
-			return false;
-		}
+enum class BotState {
+    Idle,
+    Recording,
+    Playing
+};
 
-		/**
-		 * You can use methods from the `geode::log` namespace to log messages to the console,
-		 * being useful for debugging and such. See this page for more info about logging:
-		 * https://docs.geode-sdk.org/tutorials/logging
-		*/
-		log::debug("Hello from my MenuLayer::init hook! This layer has {} children.", this->getChildrenCount());
+struct ReplayInput {
+    int frame;
+    bool player2;
+    PlayerButton button;
+    bool down;
+};
 
-		/**
-		 * See this page for more info about buttons
-		 * https://docs.geode-sdk.org/tutorials/buttons
-		*/
-		auto myButton = CCMenuItemSpriteExtra::create(
-			CCSprite::createWithSpriteFrameName("GJ_likeBtn_001.png"),
-			this,
-			/**
-			 * Here we use the name we set earlier for our modify class.
-			*/
-			menu_selector(MyMenuLayer::onMyButton)
-		);
+static std::vector<ReplayInput> g_recordedInputs;
+static BotState g_state = BotState::Idle;
+static int g_currentFrame = 0;
+static size_t g_playbackIndex = 0;
 
-		/**
-		 * Here we access the `bottom-menu` node by its ID, and add our button to it.
-		 * Node IDs are a Geode feature, see this page for more info about it:
-		 * https://docs.geode-sdk.org/tutorials/nodetree
-		*/
-		auto menu = this->getChildByID("bottom-menu");
-		menu->addChild(myButton);
+class $modify(BotPlayLayer, PlayLayer) {
+    bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
+        if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
 
-		/**
-		 * The `_spr` string literal operator just prefixes the string with
-		 * your mod id followed by a slash. This is good practice for setting your own node ids.
-		*/
-		myButton->setID("my-button"_spr);
+        g_currentFrame = 0;
+        g_playbackIndex = 0;
 
-		/**
-		 * We update the layout of the menu to ensure that our button is properly placed.
-		 * This is yet another Geode feature, see this page for more info about it:
-		 * https://docs.geode-sdk.org/tutorials/layouts
-		*/
-		menu->updateLayout();
+        return true;
+    }
 
-		/**
-		 * We return `true` to indicate that the class was properly initialized.
-		 */
-		return true;
-	}
+    void pushButton(PlayerButton button, bool isPlayer1) {
+        PlayLayer::pushButton(button, isPlayer1);
+        if (g_state == BotState::Recording) {
+            g_recordedInputs.push_back({g_currentFrame, !isPlayer1, button, true});
+        }
+    }
 
-	/**
-	 * This is the callback function for the button we created earlier.
-	 * The signature for button callbacks must always be the same,
-	 * return type `void` and taking a `CCObject*`.
-	*/
-	void onMyButton(CCObject*) {
-		FLAlertLayer::create("Geode", "Hello from my custom mod!", "OK")->show();
-	}
+    void releaseButton(PlayerButton button, bool isPlayer1) {
+        PlayLayer::releaseButton(button, isPlayer1);
+        if (g_state == BotState::Recording) {
+            g_recordedInputs.push_back({g_currentFrame, !isPlayer1, button, false});
+        }
+    }
+
+    void update(float dt) {
+        PlayLayer::update(dt);
+
+        if (g_state == BotState::Playing) {
+            while (g_playbackIndex < g_recordedInputs.size() &&
+                   g_recordedInputs[g_playbackIndex].frame == g_currentFrame) {
+                auto& input = g_recordedInputs[g_playbackIndex];
+                auto player = input.player2 ? m_player2 : m_player1;
+                if (player) {
+                    if (input.down) player->pushButton(input.button);
+                    else player->releaseButton(input.button);
+                }
+                g_playbackIndex++;
+            }
+
+            if (g_playbackIndex >= g_recordedInputs.size()) {
+                g_state = BotState::Idle;
+            }
+        }
+
+        g_currentFrame++;
+    }
+
+    void resetLevel() {
+        PlayLayer::resetLevel();
+        g_currentFrame = 0;
+        g_playbackIndex = 0;
+    }
+};
+
+class $modify(BotPauseLayer, PauseLayer) {
+    bool init(bool inEditor) {
+        if (!PauseLayer::init(inEditor)) return false;
+
+        auto menu = typeinfo_cast<CCMenu*>(this->getChildByID("pause-menu"));
+        if (!menu) return true;
+
+        auto recordBtn = CCMenuItemSpriteExtra::create(
+            CCSprite::createWithSpriteFrameName("GJ_button_01.png"),
+            this,
+            menu_selector(BotPauseLayer::onToggleRecord)
+        );
+        recordBtn->setID("bot-record-button");
+        recordBtn->setPosition({-50, 50});
+        menu->addChild(recordBtn);
+
+        auto playBtn = CCMenuItemSpriteExtra::create(
+            CCSprite::createWithSpriteFrameName("GJ_button_02.png"),
+            this,
+            menu_selector(BotPauseLayer::onTogglePlay)
+        );
+        playBtn->setID("bot-play-button");
+        playBtn->setPosition({50, 50});
+        menu->addChild(playBtn);
+
+        return true;
+    }
+
+    void onToggleRecord(CCObject*) {
+        if (g_state == BotState::Recording) {
+            g_state = BotState::Idle;
+        } else {
+            g_recordedInputs.clear();
+            g_state = BotState::Recording;
+        }
+        Notification::create(
+            g_state == BotState::Recording ? "Recording started" : "Recording stopped",
+            NotificationIcon::Info
+        )->show();
+    }
+
+    void onTogglePlay(CCObject*) {
+        if (g_state == BotState::Playing) {
+            g_state = BotState::Idle;
+        } else if (!g_recordedInputs.empty()) {
+            g_playbackIndex = 0;
+            g_state = BotState::Playing;
+        }
+        Notification::create(
+            g_state == BotState::Playing ? "Playback started" : "Playback stopped",
+            NotificationIcon::Info
+        )->show();
+    }
 };
