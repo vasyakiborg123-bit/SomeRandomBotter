@@ -1,5 +1,4 @@
 #include <Geode/modify/PlayLayer.hpp>
-#include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/PauseLayer.hpp>
 #include <vector>
 
@@ -13,6 +12,7 @@ enum class BotState {
 
 struct ReplayInput {
     int frame;
+    int button;
     bool player2;
     bool down;
 };
@@ -21,17 +21,6 @@ static std::vector<ReplayInput> g_recordedInputs;
 static BotState g_state = BotState::Idle;
 static int g_currentFrame = 0;
 static size_t g_playbackIndex = 0;
-static bool g_lastHold1 = false;
-static bool g_lastHold2 = false;
-
-class $modify(BotBaseGameLayer, GJBaseGameLayer) {
-    void pushButton(PlayerButton button, bool isPlayer1) {
-        GJBaseGameLayer::pushButton(button, isPlayer1);
-        if (g_state == BotState::Recording && button == PlayerButton::Jump) {
-            g_recordedInputs.push_back({g_currentFrame, !isPlayer1, true});
-        }
-    }
-};
 
 class $modify(BotPlayLayer, PlayLayer) {
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
@@ -39,36 +28,25 @@ class $modify(BotPlayLayer, PlayLayer) {
 
         g_currentFrame = 0;
         g_playbackIndex = 0;
-        g_lastHold1 = false;
-        g_lastHold2 = false;
 
         return true;
+    }
+
+    void handleButton(bool down, int button, bool isPlayer1) {
+        PlayLayer::handleButton(down, button, isPlayer1);
+        if (g_state == BotState::Recording) {
+            g_recordedInputs.push_back({g_currentFrame, button, !isPlayer1, down});
+        }
     }
 
     void update(float dt) {
         PlayLayer::update(dt);
 
-        // Отслеживаем release через изменение состояния m_isHolding
-        if (g_state == BotState::Recording) {
-            if (m_player1 && g_lastHold1 && !m_player1->m_isHolding) {
-                g_recordedInputs.push_back({g_currentFrame, false, false});
-            }
-            if (m_player2 && g_lastHold2 && !m_player2->m_isHolding) {
-                g_recordedInputs.push_back({g_currentFrame, true, false});
-            }
-        }
-        if (m_player1) g_lastHold1 = m_player1->m_isHolding;
-        if (m_player2) g_lastHold2 = m_player2->m_isHolding;
-
         if (g_state == BotState::Playing) {
             while (g_playbackIndex < g_recordedInputs.size() &&
                    g_recordedInputs[g_playbackIndex].frame == g_currentFrame) {
                 auto& input = g_recordedInputs[g_playbackIndex];
-                auto player = input.player2 ? m_player2 : m_player1;
-                if (player) {
-                    if (input.down) player->pushButton(PlayerButton::Jump);
-                    else player->releaseButton(PlayerButton::Jump);
-                }
+                this->handleButton(input.down, input.button, !input.player2);
                 g_playbackIndex++;
             }
 
@@ -84,8 +62,6 @@ class $modify(BotPlayLayer, PlayLayer) {
         PlayLayer::resetLevel();
         g_currentFrame = 0;
         g_playbackIndex = 0;
-        g_lastHold1 = false;
-        g_lastHold2 = false;
     }
 };
 
