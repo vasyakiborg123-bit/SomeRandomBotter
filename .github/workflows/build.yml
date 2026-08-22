@@ -13,9 +13,11 @@ jobs:
         include:
           - name: Windows
             os: windows-latest
+
           - name: Android32
             os: ubuntu-latest
             target: Android32
+
           - name: Android64
             os: ubuntu-latest
             target: Android64
@@ -24,18 +26,12 @@ jobs:
     name: ${{ matrix.name }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+      - uses: actions/checkout@v4
 
-      - name: Setup Geode
-        uses: geode-sdk/setup-geode-cli@main
-
-      - name: Build
+      - name: Build the mod
         uses: geode-sdk/build-geode-mod@main
         with:
-          target: ${{ matrix.target || '' }}
+          target: ${{ matrix.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
