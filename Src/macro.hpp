@@ -37,7 +37,7 @@ struct input : gdr::Input {
 
 struct Macro : gdr::Replay<Macro, input> {
 
-    Macro() : Replay("xdBot", xdBotVersion.c_str()) {}
+    Macro() : Replay("xdBot", Mod::get()->getVersion().toString().c_str()) {}
 
 public:
 
