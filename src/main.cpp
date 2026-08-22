@@ -1,5 +1,5 @@
 #include <Geode/modify/PlayLayer.hpp>
-#include <Geode/modify/PlayerObject.hpp>
+#include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/PauseLayer.hpp>
 #include <vector>
 
@@ -23,6 +23,22 @@ static BotState g_state = BotState::Idle;
 static int g_currentFrame = 0;
 static size_t g_playbackIndex = 0;
 
+class $modify(BotBaseGameLayer, GJBaseGameLayer) {
+    void pushButton(PlayerButton button, bool isPlayer1) {
+        GJBaseGameLayer::pushButton(button, isPlayer1);
+        if (g_state == BotState::Recording) {
+            g_recordedInputs.push_back({g_currentFrame, !isPlayer1, button, true});
+        }
+    }
+
+    void releaseButton(PlayerButton button, bool isPlayer1) {
+        GJBaseGameLayer::releaseButton(button, isPlayer1);
+        if (g_state == BotState::Recording) {
+            g_recordedInputs.push_back({g_currentFrame, !isPlayer1, button, false});
+        }
+    }
+};
+
 class $modify(BotPlayLayer, PlayLayer) {
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
         if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
@@ -31,20 +47,6 @@ class $modify(BotPlayLayer, PlayLayer) {
         g_playbackIndex = 0;
 
         return true;
-    }
-
-    void pushButton(PlayerButton button, bool isPlayer1) {
-        PlayLayer::pushButton(button, isPlayer1);
-        if (g_state == BotState::Recording) {
-            g_recordedInputs.push_back({g_currentFrame, !isPlayer1, button, true});
-        }
-    }
-
-    void releaseButton(PlayerButton button, bool isPlayer1) {
-        PlayLayer::releaseButton(button, isPlayer1);
-        if (g_state == BotState::Recording) {
-            g_recordedInputs.push_back({g_currentFrame, !isPlayer1, button, false});
-        }
     }
 
     void update(float dt) {
